@@ -11,7 +11,7 @@ import manuf
 # CONFIGURACIÓN
 # =========================
 INTERFAZ = "wlan1"
-INTERFAZ_MON = "wlan1mon"
+INTERFAZ_MON = "wlan1"
 
 parser = manuf.MacParser()
 
@@ -263,3 +263,4 @@ salida_text = tk.Text(root,
 salida_text.pack(fill="both", expand=True, padx=3, pady=3)
 
 root.mainloop()
+
