@@ -21,8 +21,8 @@ scan_activo = False
 # =========================
 # GUI CONFIG (TFT 2.8" 320x480)
 # =========================
-ANCHO = 320
-ALTO = 480
+ANCHO = 240
+ALTO = 320
 
 root = tk.Tk()
 root.title("WiFi Lab Tool")
@@ -276,3 +276,4 @@ salida_text = tk.Text(root,
 salida_text.pack(fill="x", padx=5, pady=5)
 
 root.mainloop()
+
