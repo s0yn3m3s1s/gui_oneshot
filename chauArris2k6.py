@@ -2,60 +2,21 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import subprocess
 import threading
-import csv
-import os
 import time
+import os
+import csv
 import manuf
 
 # =========================
-# CONFIG
+# CONFIGURACIÓN
 # =========================
-INTERFAZ_MON = "wlan1"
 INTERFAZ = "wlan1"
+INTERFAZ_MON = "wlan1mon"
 
 parser = manuf.MacParser()
 
 scan_process = None
 scan_activo = False
-
-# =========================
-# GUI CONFIG (TFT 2.8" 320x480)
-# =========================
-ANCHO = 240
-ALTO = 320
-
-root = tk.Tk()
-root.title("WiFi Lab Tool")
-
-# KIOSK REAL
-root.attributes("-fullscreen", True)
-root.overrideredirect(True)
-root.config(cursor="none")
-root.configure(bg="#111111")
-
-def salir_kiosk(event=None):
-    root.destroy()
-
-root.bind("<Control-Alt-q>", salir_kiosk)
-
-# =========================
-# ESTILOS
-# =========================
-style = ttk.Style()
-style.theme_use("default")
-
-style.configure("Treeview",
-                background="#222222",
-                foreground="white",
-                fieldbackground="#222222",
-                rowheight=22,
-                font=("Arial", 9))
-
-style.map("Treeview",
-          background=[("selected", "#4444aa")])
-
-FUENTE_BTN = ("Arial", 10, "bold")
-FUENTE_CONSOLA = ("Courier", 8)
 
 # =========================
 # LOG CONSOLA
@@ -75,10 +36,8 @@ def ejecutar_comando(cmd):
             stderr=subprocess.STDOUT,
             text=True
         )
-
         for linea in proceso.stdout:
             log(linea.strip())
-
     except Exception as e:
         log(f"Error: {e}")
 
@@ -149,7 +108,6 @@ def escanear_redes():
                         if leyendo and len(fila) > 13:
                             bssid = fila[0]
                             essid = fila[13]
-
                             fabricante = parser.get_manuf(bssid)
 
                             redes_tree.insert(
@@ -194,13 +152,15 @@ def prueba_autorizada():
     essid = valores[1]
 
     log(f"[+] Iniciando prueba autorizada contra: {essid}")
+    log(f"[+] Fabricante: {fabricante}")
 
     def ejecutar_tool():
         try:
             comando = [
                 "python3",
                 "script_auditoria.py",
-                INTERFAZ_MON
+                INTERFAZ_MON,
+                essid
             ]
 
             proceso = subprocess.Popen(
@@ -221,59 +181,85 @@ def prueba_autorizada():
     threading.Thread(target=ejecutar_tool, daemon=True).start()
 
 # =========================
-# BOTONES VERTICALES TÁCTILES
+# GUI MINIMAL 240x320
 # =========================
-frame_botones = tk.Frame(root, bg="#111111")
-frame_botones.pack(fill="x", pady=5)
+ANCHO = 240
+ALTO = 320
 
-botones = [
-    ("Monitor", "#0044aa", modo_monitor),
-    ("Stop Mon", "#aa0000", detener_monitor),
-    ("Escanear", "#007700", escanear_redes),
-    ("Stop Scan", "#aa7700", detener_scan),
-    ("Auditar", "#333333", prueba_autorizada)
-]
+root = tk.Tk()
+root.geometry("240x320")
+root.overrideredirect(True)
+root.configure(bg="#000000")
+root.config(cursor="none")
 
-for texto, color, comando in botones:
-    tk.Button(frame_botones,
-              text=texto,
-              font=FUENTE_BTN,
-              height=2,
-              bg=color,
-              fg="white",
-              bd=0,
-              activebackground=color,
-              command=comando).pack(fill="x", padx=10, pady=3)
+def salir(event=None):
+    root.destroy()
 
-# =========================
-# TABLA (Fabricante | ESSID)
-# =========================
-columnas = ("Fabricante", "ESSID")
+root.bind("<Control-Alt-q>", salir)
+
+# ---------- ESTILO ----------
+style = ttk.Style()
+style.theme_use("default")
+
+style.configure("Treeview",
+                background="#111111",
+                foreground="white",
+                fieldbackground="#111111",
+                rowheight=18,
+                font=("Arial", 7))
+
+style.map("Treeview",
+          background=[("selected", "#333333")])
+
+FUENTE_BTN = ("Arial", 8)
+FUENTE_CONSOLA = ("Courier", 7)
+
+# ---------- BOTONES ----------
+frame_btn = tk.Frame(root, bg="#000000")
+frame_btn.pack(fill="x")
+
+def crear_boton(texto, comando):
+    return tk.Button(frame_btn,
+                     text=texto,
+                     font=FUENTE_BTN,
+                     height=1,
+                     bg="#222222",
+                     fg="white",
+                     bd=0,
+                     activebackground="#333333",
+                     command=comando)
+
+crear_boton("MON", modo_monitor).pack(fill="x", padx=3, pady=2)
+crear_boton("STOP MON", detener_monitor).pack(fill="x", padx=3, pady=2)
+crear_boton("SCAN", escanear_redes).pack(fill="x", padx=3, pady=2)
+crear_boton("STOP SCAN", detener_scan).pack(fill="x", padx=3, pady=2)
+crear_boton("AUDIT", prueba_autorizada).pack(fill="x", padx=3, pady=2)
+
+# ---------- TABLA ----------
+columnas = ("FAB", "ESSID")
 
 redes_tree = ttk.Treeview(root,
                           columns=columnas,
                           show="headings",
-                          height=9)
+                          height=6)
 
-redes_tree.heading("Fabricante", text="Fabricante")
+redes_tree.heading("FAB", text="FAB")
 redes_tree.heading("ESSID", text="ESSID")
 
-redes_tree.column("Fabricante", width=140, anchor="center")
-redes_tree.column("ESSID", width=160, anchor="w")
+redes_tree.column("FAB", width=90, anchor="center")
+redes_tree.column("ESSID", width=140, anchor="w")
 
-redes_tree.pack(fill="both", expand=True, padx=5, pady=5)
+redes_tree.pack(fill="x", padx=3, pady=4)
 
-# =========================
-# CONSOLA ESTILO TERMINAL
-# =========================
+# ---------- CONSOLA ----------
 salida_text = tk.Text(root,
-                      height=6,
+                      height=5,
                       font=FUENTE_CONSOLA,
-                      bg="black",
-                      fg="lime",
-                      insertbackground="white")
+                      bg="#000000",
+                      fg="#00ff00",
+                      insertbackground="white",
+                      bd=0)
 
-salida_text.pack(fill="x", padx=5, pady=5)
+salida_text.pack(fill="both", expand=True, padx=3, pady=3)
 
 root.mainloop()
-
