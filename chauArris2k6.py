@@ -3,15 +3,15 @@ from tkinter import ttk, messagebox
 import subprocess
 import threading
 import csv
-import time
 import os
-from manuf import manuf
+import time
+import manuf
 
 # =========================
 # CONFIG
 # =========================
-INTERFAZ = "wlan1"
 INTERFAZ_MON = "wlan1"
+INTERFAZ = "wlan1"
 
 parser = manuf.MacParser()
 
@@ -19,13 +19,50 @@ scan_process = None
 scan_activo = False
 
 # =========================
-# LOG SEGURO
+# GUI CONFIG (TFT 2.8" 320x480)
+# =========================
+ANCHO = 320
+ALTO = 480
+
+root = tk.Tk()
+root.title("WiFi Lab Tool")
+
+# KIOSK REAL
+root.attributes("-fullscreen", True)
+root.overrideredirect(True)
+root.config(cursor="none")
+root.configure(bg="#111111")
+
+def salir_kiosk(event=None):
+    root.destroy()
+
+root.bind("<Control-Alt-q>", salir_kiosk)
+
+# =========================
+# ESTILOS
+# =========================
+style = ttk.Style()
+style.theme_use("default")
+
+style.configure("Treeview",
+                background="#222222",
+                foreground="white",
+                fieldbackground="#222222",
+                rowheight=22,
+                font=("Arial", 9))
+
+style.map("Treeview",
+          background=[("selected", "#4444aa")])
+
+FUENTE_BTN = ("Arial", 10, "bold")
+FUENTE_CONSOLA = ("Courier", 8)
+
+# =========================
+# LOG CONSOLA
 # =========================
 def log(msg):
-    salida_text.after(0, lambda: (
-        salida_text.insert(tk.END, msg + "\n"),
-        salida_text.see(tk.END)
-    ))
+    salida_text.insert(tk.END, msg + "\n")
+    salida_text.see(tk.END)
 
 # =========================
 # EJECUTAR COMANDOS
@@ -38,8 +75,10 @@ def ejecutar_comando(cmd):
             stderr=subprocess.STDOUT,
             text=True
         )
+
         for linea in proceso.stdout:
             log(linea.strip())
+
     except Exception as e:
         log(f"Error: {e}")
 
@@ -52,6 +91,9 @@ def modo_monitor():
         ejecutar_comando(["airmon-ng", "start", INTERFAZ])
     threading.Thread(target=run, daemon=True).start()
 
+# =========================
+# DETENER MONITOR
+# =========================
 def detener_monitor():
     def run():
         log("[+] Deteniendo modo monitor...")
@@ -62,10 +104,13 @@ def detener_monitor():
 # ESCANEAR REDES
 # =========================
 def escanear_redes():
-    global scan_process, scan_activo
+    global scan_process
+    global scan_activo
 
     scan_activo = True
     redes_tree.delete(*redes_tree.get_children())
+
+    archivo = "scan"
 
     if os.path.exists("scan-01.csv"):
         os.remove("scan-01.csv")
@@ -75,7 +120,7 @@ def escanear_redes():
     scan_process = subprocess.Popen([
         "airodump-ng",
         INTERFAZ_MON,
-        "--write", "scan",
+        "--write", archivo,
         "--output-format", "csv"
     ])
 
@@ -89,11 +134,11 @@ def escanear_redes():
             try:
                 with open("scan-01.csv", newline='', encoding="utf-8") as f:
                     reader = csv.reader(f)
-                    nuevas_redes = []
+                    redes_tree.delete(*redes_tree.get_children())
+
                     leyendo = False
 
                     for fila in reader:
-
                         if len(fila) > 0 and fila[0] == "BSSID":
                             leyendo = True
                             continue
@@ -102,37 +147,27 @@ def escanear_redes():
                             break
 
                         if leyendo and len(fila) > 13:
-
                             bssid = fila[0]
-                            canal = fila[3]
-                            power = fila[8]
                             essid = fila[13]
 
                             fabricante = parser.get_manuf(bssid)
 
-                            nuevas_redes.append(
-                                (fabricante, essid, canal, power)
+                            redes_tree.insert(
+                                "",
+                                "end",
+                                values=(fabricante, essid)
                             )
-
-                    actualizar_tabla(nuevas_redes)
-
             except:
                 pass
 
     threading.Thread(target=leer_csv, daemon=True).start()
 
-def actualizar_tabla(redes):
-    def update():
-        redes_tree.delete(*redes_tree.get_children())
-        for red in redes:
-            redes_tree.insert("", "end", values=red)
-    root.after(0, update)
-
 # =========================
 # DETENER ESCANEO
 # =========================
 def detener_scan():
-    global scan_process, scan_activo
+    global scan_process
+    global scan_activo
 
     scan_activo = False
 
@@ -146,6 +181,7 @@ def detener_scan():
 # PRUEBA AUTORIZADA
 # =========================
 def prueba_autorizada():
+
     seleccion = redes_tree.focus()
 
     if not seleccion:
@@ -157,97 +193,86 @@ def prueba_autorizada():
     fabricante = valores[0]
     essid = valores[1]
 
-    log(f"[+] Iniciando prueba contra: {essid}")
-    log(f"[+] Fabricante: {fabricante}")
+    log(f"[+] Iniciando prueba autorizada contra: {essid}")
 
     def ejecutar_tool():
         try:
+            comando = [
+                "python3",
+                "script_auditoria.py",
+                INTERFAZ_MON
+            ]
+
             proceso = subprocess.Popen(
-                ["python3", "script_auditoria.py", INTERFAZ_MON],
+                comando,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True
             )
+
             for linea in proceso.stdout:
                 log(linea.strip())
+
             log("[+] Proceso finalizado")
+
         except Exception as e:
             log(f"Error: {e}")
 
     threading.Thread(target=ejecutar_tool, daemon=True).start()
 
 # =========================
-# GUI 480x320 TFT
+# BOTONES VERTICALES TÁCTILES
 # =========================
-ANCHO = 480
-ALTO = 320
+frame_botones = tk.Frame(root, bg="#111111")
+frame_botones.pack(fill="x", pady=5)
 
-root = tk.Tk()
-root.title("WiFi Lab Tool")
-root.geometry(f"{ANCHO}x{ALTO}")
-root.resizable(False, False)
-root.configure(bg="#111111")
+botones = [
+    ("Monitor", "#0044aa", modo_monitor),
+    ("Stop Mon", "#aa0000", detener_monitor),
+    ("Escanear", "#007700", escanear_redes),
+    ("Stop Scan", "#aa7700", detener_scan),
+    ("Auditar", "#333333", prueba_autorizada)
+]
 
-style = ttk.Style()
-style.theme_use("default")
-style.configure("Treeview",
-                background="#222222",
-                foreground="white",
-                fieldbackground="#222222",
-                rowheight=18)
-style.map("Treeview", background=[("selected", "#4444aa")])
+for texto, color, comando in botones:
+    tk.Button(frame_botones,
+              text=texto,
+              font=FUENTE_BTN,
+              height=2,
+              bg=color,
+              fg="white",
+              bd=0,
+              activebackground=color,
+              command=comando).pack(fill="x", padx=10, pady=3)
 
-FUENTE_BTN = ("Arial", 9, "bold")
-FUENTE_CONSOLA = ("Courier", 7)
+# =========================
+# TABLA (Fabricante | ESSID)
+# =========================
+columnas = ("Fabricante", "ESSID")
 
-# -------- BOTONES --------
-frame_top = tk.Frame(root, bg="#111111")
-frame_top.pack(fill="x", pady=2)
+redes_tree = ttk.Treeview(root,
+                          columns=columnas,
+                          show="headings",
+                          height=9)
 
-tk.Button(frame_top, text="Monitor", font=FUENTE_BTN,
-          height=2, bg="#0044aa", fg="white",
-          command=modo_monitor).grid(row=0, column=0, sticky="ew")
+redes_tree.heading("Fabricante", text="Fabricante")
+redes_tree.heading("ESSID", text="ESSID")
 
-tk.Button(frame_top, text="Stop Mon", font=FUENTE_BTN,
-          height=2, bg="#aa0000", fg="white",
-          command=detener_monitor).grid(row=0, column=1, sticky="ew")
+redes_tree.column("Fabricante", width=140, anchor="center")
+redes_tree.column("ESSID", width=160, anchor="w")
 
-tk.Button(frame_top, text="Escanear", font=FUENTE_BTN,
-          height=2, bg="#007700", fg="white",
-          command=escanear_redes).grid(row=1, column=0, sticky="ew")
+redes_tree.pack(fill="both", expand=True, padx=5, pady=5)
 
-tk.Button(frame_top, text="Stop Scan", font=FUENTE_BTN,
-          height=2, bg="#aa7700", fg="white",
-          command=detener_scan).grid(row=1, column=1, sticky="ew")
-
-tk.Button(frame_top, text="Auditar", font=FUENTE_BTN,
-          height=2, bg="#333333", fg="white",
-          command=prueba_autorizada).grid(row=2, column=0, columnspan=2, sticky="ew")
-
-frame_top.columnconfigure(0, weight=1)
-frame_top.columnconfigure(1, weight=1)
-
-# -------- TABLA --------
-columnas = ("Fabricante", "ESSID", "Canal", "Señal")
-
-redes_tree = ttk.Treeview(root, columns=columnas,
-                          show="headings", height=5)
-
-redes_tree.column("Fabricante", width=140)
-redes_tree.column("ESSID", width=140)
-redes_tree.column("Canal", width=60)
-redes_tree.column("Señal", width=60)
-
-for col in columnas:
-    redes_tree.heading(col, text=col)
-
-redes_tree.pack(fill="x", padx=5, pady=3)
-
-# -------- CONSOLA --------
-salida_text = tk.Text(root, height=6,
+# =========================
+# CONSOLA ESTILO TERMINAL
+# =========================
+salida_text = tk.Text(root,
+                      height=6,
                       font=FUENTE_CONSOLA,
-                      bg="black", fg="lime")
-salida_text.pack(fill="both", expand=True, padx=5, pady=3)
+                      bg="black",
+                      fg="lime",
+                      insertbackground="white")
+
+salida_text.pack(fill="x", padx=5, pady=5)
 
 root.mainloop()
-
