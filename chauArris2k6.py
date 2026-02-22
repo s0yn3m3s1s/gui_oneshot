@@ -1,16 +1,19 @@
+
+
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 import subprocess
 import threading
-import time
-import os
 import csv
+import os
+import time
 import manuf
 
 # =========================
-# CONFIGURACIÓN
+# CONFIG
 # =========================
-INTERFAZ = "wlan1"
+INTERFAZ = "wlan0"
 INTERFAZ_MON = "wlan1"
 
 parser = manuf.MacParser()
@@ -24,6 +27,7 @@ scan_activo = False
 def log(msg):
     salida_text.insert(tk.END, msg + "\n")
     salida_text.see(tk.END)
+
 
 # =========================
 # EJECUTAR COMANDOS
@@ -41,23 +45,16 @@ def ejecutar_comando(cmd):
     except Exception as e:
         log(f"Error: {e}")
 
+
 # =========================
 # MODO MONITOR
 # =========================
 def modo_monitor():
     def run():
-        log("[+] Activando modo monitor...")
-        ejecutar_comando(["airmon-ng", "start", INTERFAZ])
+        log("[+] Activando monitor...")
+        ejecutar_comando(["sudo", "airmon-ng", "start", INTERFAZ])
     threading.Thread(target=run, daemon=True).start()
 
-# =========================
-# DETENER MONITOR
-# =========================
-def detener_monitor():
-    def run():
-        log("[+] Deteniendo modo monitor...")
-        ejecutar_comando(["airmon-ng", "stop", INTERFAZ_MON])
-    threading.Thread(target=run, daemon=True).start()
 
 # =========================
 # ESCANEAR REDES
@@ -74,9 +71,10 @@ def escanear_redes():
     if os.path.exists("scan-01.csv"):
         os.remove("scan-01.csv")
 
-    log("[+] Iniciando escaneo...")
+    log("[+] Escaneando...")
 
     scan_process = subprocess.Popen([
+        "sudo",
         "airodump-ng",
         INTERFAZ_MON,
         "--write", archivo,
@@ -94,10 +92,10 @@ def escanear_redes():
                 with open("scan-01.csv", newline='', encoding="utf-8") as f:
                     reader = csv.reader(f)
                     redes_tree.delete(*redes_tree.get_children())
-
                     leyendo = False
 
                     for fila in reader:
+
                         if len(fila) > 0 and fila[0] == "BSSID":
                             leyendo = True
                             continue
@@ -106,6 +104,7 @@ def escanear_redes():
                             break
 
                         if leyendo and len(fila) > 13:
+
                             bssid = fila[0]
                             essid = fila[13]
                             fabricante = parser.get_manuf(bssid)
@@ -113,15 +112,17 @@ def escanear_redes():
                             redes_tree.insert(
                                 "",
                                 "end",
-                                values=(fabricante, essid)
+                                values=(fabricante, essid, bssid)
                             )
+
             except:
                 pass
 
     threading.Thread(target=leer_csv, daemon=True).start()
 
+
 # =========================
-# DETENER ESCANEO
+# DETENER SCAN
 # =========================
 def detener_scan():
     global scan_process
@@ -133,10 +134,11 @@ def detener_scan():
         scan_process.terminate()
         scan_process = None
 
-    log("[+] Escaneo detenido")
+    log("[+] Scan detenido")
+
 
 # =========================
-# PRUEBA AUTORIZADA
+# PRUEBA AUTORIZADA (ATACAR)
 # =========================
 def prueba_autorizada():
 
@@ -150,17 +152,19 @@ def prueba_autorizada():
 
     fabricante = valores[0]
     essid = valores[1]
+    bssid = valores[2]
 
-    log(f"[+] Iniciando prueba autorizada contra: {essid}")
-    log(f"[+] Fabricante: {fabricante}")
+    log(f"[+] Iniciando prueba contra: {essid}")
+    log(f"[+] BSSID: {bssid}")
 
     def ejecutar_tool():
         try:
             comando = [
+                "sudo",
                 "python3",
                 "script_auditoria.py",
                 INTERFAZ_MON,
-                essid
+                bssid
             ]
 
             proceso = subprocess.Popen(
@@ -180,87 +184,77 @@ def prueba_autorizada():
 
     threading.Thread(target=ejecutar_tool, daemon=True).start()
 
-# =========================
-# GUI MINIMAL 240x320
-# =========================
-ANCHO = 240
-ALTO = 320
 
+# =========================
+# GUI
+# =========================
 root = tk.Tk()
+root.title("WiFi Lab")
 root.geometry("240x320")
-root.overrideredirect(True)
-root.configure(bg="#000000")
-root.config(cursor="none")
+root.configure(bg="#111111")
+root.resizable(False, False)
 
-def salir(event=None):
-    root.destroy()
+# -------- BOTONES --------
+frame_botones = tk.Frame(root, bg="#111111")
+frame_botones.pack(fill="x", pady=2)
 
-root.bind("<Control-Alt-q>", salir)
+btn_style = {
+    "font": ("Helvetica", 7, "bold"),
+    "height": 1,
+    "width": 10,
+    "bd": 0
+}
 
-# ---------- ESTILO ----------
-style = ttk.Style()
-style.theme_use("default")
+tk.Button(frame_botones, text="MON",
+          bg="#00BCD4", fg="white",
+          command=modo_monitor, **btn_style).pack(pady=1)
 
-style.configure("Treeview",
-                background="#111111",
-                foreground="white",
-                fieldbackground="#111111",
-                rowheight=18,
-                font=("Arial", 7))
+tk.Button(frame_botones, text="SCAN",
+          bg="#4CAF50", fg="white",
+          command=escanear_redes, **btn_style).pack(pady=1)
 
-style.map("Treeview",
-          background=[("selected", "#333333")])
+tk.Button(frame_botones, text="STOP",
+          bg="#F44336", fg="white",
+          command=detener_scan, **btn_style).pack(pady=1)
 
-FUENTE_BTN = ("Arial", 8)
-FUENTE_CONSOLA = ("Courier", 7)
+tk.Button(frame_botones, text="ATACAR",
+          bg="#FF9800", fg="white",
+          command=prueba_autorizada, **btn_style).pack(pady=1)
 
-# ---------- BOTONES ----------
-frame_btn = tk.Frame(root, bg="#000000")
-frame_btn.pack(fill="x")
+# -------- TABLA PEQUEÑA --------
+frame_tabla = tk.Frame(root)
+frame_tabla.pack(fill="x", pady=2)
 
-def crear_boton(texto, comando):
-    return tk.Button(frame_btn,
-                     text=texto,
-                     font=FUENTE_BTN,
-                     height=1,
-                     bg="#222222",
-                     fg="white",
-                     bd=0,
-                     activebackground="#333333",
-                     command=comando)
+columnas = ("Fabricante", "ESSID", "BSSID")
 
-crear_boton("MON", modo_monitor).pack(fill="x", padx=3, pady=2)
-crear_boton("STOP MON", detener_monitor).pack(fill="x", padx=3, pady=2)
-crear_boton("SCAN", escanear_redes).pack(fill="x", padx=3, pady=2)
-crear_boton("STOP SCAN", detener_scan).pack(fill="x", padx=3, pady=2)
-crear_boton("AUDIT", prueba_autorizada).pack(fill="x", padx=3, pady=2)
+redes_tree = ttk.Treeview(
+    frame_tabla,
+    columns=columnas,
+    show="headings",
+    height=4
+)
 
-# ---------- TABLA ----------
-columnas = ("FAB", "ESSID")
-
-redes_tree = ttk.Treeview(root,
-                          columns=columnas,
-                          show="headings",
-                          height=6)
-
-redes_tree.heading("FAB", text="FAB")
+redes_tree.heading("Fabricante", text="FAB")
 redes_tree.heading("ESSID", text="ESSID")
+redes_tree.heading("BSSID", text="")  # Oculto
 
-redes_tree.column("FAB", width=90, anchor="center")
-redes_tree.column("ESSID", width=140, anchor="w")
+redes_tree.column("Fabricante", width=85)
+redes_tree.column("ESSID", width=135)
+redes_tree.column("BSSID", width=0, stretch=False)
 
-redes_tree.pack(fill="x", padx=3, pady=4)
+redes_tree.pack(fill="x")
 
-# ---------- CONSOLA ----------
-salida_text = tk.Text(root,
-                      height=5,
-                      font=FUENTE_CONSOLA,
-                      bg="#000000",
-                      fg="#00ff00",
-                      insertbackground="white",
-                      bd=0)
+# -------- LOGS (MITAD INFERIOR) --------
+frame_logs = tk.Frame(root)
+frame_logs.pack(fill="both", expand=True)
 
-salida_text.pack(fill="both", expand=True, padx=3, pady=3)
+salida_text = tk.Text(
+    frame_logs,
+    bg="black",
+    fg="lime",
+    font=("Courier", 7)
+)
+
+salida_text.pack(fill="both", expand=True)
 
 root.mainloop()
-
